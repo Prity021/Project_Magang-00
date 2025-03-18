@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App - WhatsApp Style</title>
+    <title>WhatsApp Style Chat</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
     <style>
         body {
@@ -18,12 +18,13 @@
         }
 
         .container {
-            width: 90%;
-            max-width: 400px;
+            width: 100%;
+            max-width: 450px;
+            height: 100vh;
             background: white;
-            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            overflow: hidden;
         }
 
         /* Header */
@@ -33,11 +34,12 @@
             padding: 15px;
             text-align: center;
             font-weight: bold;
+            font-size: 16px;
         }
 
         /* Chat Box */
         #chat-box {
-            height: 350px;
+            flex: 1;
             overflow-y: auto;
             padding: 10px;
             background: #e5ddd5;
@@ -46,11 +48,12 @@
         }
 
         .message {
-            max-width: 70%;
-            padding: 10px;
+            max-width: 75%;
+            padding: 10px 15px;
             margin: 5px;
-            border-radius: 10px;
+            border-radius: 20px;
             font-size: 14px;
+            word-wrap: break-word;
         }
 
         .incoming {
@@ -66,30 +69,38 @@
         /* Input Chat */
         .chat-input {
             display: flex;
+            align-items: center;
             border-top: 1px solid #ddd;
             background: white;
-            padding: 5px;
+            padding: 10px;
         }
 
         .chat-input input {
             flex: 1;
             padding: 10px;
-            border: none;
+            border: 1px solid #ddd;
             border-radius: 20px;
             outline: none;
+            font-size: 14px;
         }
 
         .chat-input button {
-            background: #075e54;
+            background: #128c7e;
             color: white;
             border: none;
-            padding: 10px 15px;
-            margin-left: 5px;
+            padding: 10px;
+            margin-left: 10px;
             border-radius: 50%;
             cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
         }
 
-        /* Group Management */
+        /* Group Section */
         .group-section {
             padding: 10px;
             background: #fff;
@@ -99,21 +110,23 @@
 
         .group-section input {
             width: 80%;
-            padding: 10px;
+            padding: 8px;
             border: 1px solid #ddd;
             border-radius: 5px;
+            font-size: 14px;
+            margin: 5px 0;
         }
 
         .group-section button {
-            background: #128c7e;
+            background: #25d366;
             color: white;
             border: none;
-            padding: 10px;
+            padding: 8px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 14px;
             margin-top: 5px;
         }
-
     </style>
 </head>
 
@@ -130,9 +143,12 @@
 
         <!-- Group Section -->
         <div class="group-section">
-            <h3>Add People to Group</h3>
-            <input type="text" id="addMember" placeholder="Enter username">
-            <button onclick="addMemberToGroup()">Add</button>
+            <h3>Create or Join Group</h3>
+            <button onclick="createGroup()">Create Group</button>
+            <p id="groupCodeDisplay"></p>
+            <input type="text" id="username" placeholder="Enter your name">
+            <input type="text" id="groupCode" placeholder="Enter group code">
+            <button onclick="joinGroup()">Join Group</button>
         </div>
 
         <!-- Chat Input -->
@@ -145,87 +161,68 @@
     <script>
         let socket;
         let currentGroup = "";
-        let groups = {};
-        let messages = []; // Array untuk menyimpan pesan
+        let username = "";
+        let groups = {};  // Menyimpan daftar grup dan anggotanya
+        let messages = [];
 
         function connectToChat() {
-            const username = prompt("Enter your username:");
-            if (!username) return;
-
-            socket = io("http://127.0.0.1:5000", { query: { username } });
+            socket = io("http://127.0.0.1:5000");
 
             socket.on("connect", () => {
                 console.log("Connected to server!");
             });
 
             socket.on("message", (data) => {
-                messages.push(data); // Simpan pesan ke dalam array
+                messages.push(data);
                 updateChatBox();
             });
         }
 
-        function joinGroup() {
-            const groupCode = prompt("Enter group code:");
-            if (!groupCode) return alert("Enter a valid group code!");
-
-            currentGroup = groupCode;
-            document.getElementById("currentGroup").textContent = groupCode;
-
-            if (!(currentGroup in groups)) {
-                groups[currentGroup] = [];
-            }
-
-            socket.emit("join_group", { group: currentGroup });
+        function createGroup() {
+            let groupCode = Math.random().toString(36).substring(2, 8).toUpperCase(); // Kode admin
+            groups[groupCode] = { admin: groupCode, members: {} };
+            document.getElementById("groupCodeDisplay").innerText = `Admin Code: ${groupCode}`;
+            alert(`Group Created! Share this admin code: ${groupCode}`);
         }
 
-        function addMemberToGroup() {
-            const memberName = document.getElementById("addMember").value;
-            if (!currentGroup) return alert("Join a group first!");
-            if (!memberName) return alert("Enter a username!");
+        function joinGroup() {
+            username = document.getElementById("username").value.trim();
+            let groupCode = document.getElementById("groupCode").value.toUpperCase().trim();
 
-            if (!(currentGroup in groups)) {
-                groups[currentGroup] = [];
-            }
+            if (!username) return alert("Enter your name!");
+            if (!groupCode) return alert("Enter a valid group code!");
 
-            if (!groups[currentGroup].includes(memberName)) {
-                groups[currentGroup].push(memberName);
-            } else {
-                alert("User already in group!");
-            }
+            if (!(groupCode in groups)) return alert("Group not found!");
+
+            // Generate kode unik untuk user yang berbeda dari admin
+            let uniqueCode;
+            do {
+                uniqueCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            } while (uniqueCode === groups[groupCode].admin || Object.values(groups[groupCode].members).includes(uniqueCode));
+
+            groups[groupCode].members[username] = uniqueCode;
+            currentGroup = groupCode;
+
+            document.getElementById("currentGroup").textContent = `${groupCode} (${username})`;
+
+            alert(`You joined group ${groupCode} as ${username}. Your unique code: ${uniqueCode}`);
+
+            socket.emit("join_group", { group: groupCode, username });
         }
 
         function sendMessage() {
             const message = document.getElementById("message").value;
             if (!message || !currentGroup) return alert("Join a group first!");
 
-            // Simpan pesan ke dalam array
-            messages.push({ user: "You", message });
-
-            // Kirim pesan ke server
-            socket.emit("send_message", { group: currentGroup, message });
-
-            // Perbarui tampilan chat
+            socket.emit("send_message", { group: currentGroup, message, user: username });
+            messages.push({ user: username, message });
             updateChatBox();
-
-            // Kosongkan input
             document.getElementById("message").value = "";
         }
 
         function updateChatBox() {
             let chatBox = document.getElementById("chat-box");
-            chatBox.innerHTML = ""; // Kosongkan chat sebelum diperbarui
-
-            messages.forEach(msg => {
-                let messageType = msg.user === "You" ? "outgoing" : "incoming";
-                chatBox.innerHTML += `<div class="message ${messageType}"><strong>${msg.user}:</strong> ${msg.message}</div>`;
-            });
-
-            scrollToBottom();
-        }
-
-        function scrollToBottom() {
-            let chatBox = document.getElementById("chat-box");
-            chatBox.scrollTop = chatBox.scrollHeight;
+            chatBox.innerHTML = messages.map(msg => `<div class="message ${msg.user === username ? 'outgoing' : 'incoming'}"><strong>${msg.user}:</strong> ${msg.message}</div>`).join('');
         }
 
         connectToChat();
